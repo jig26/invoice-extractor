@@ -12,8 +12,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class ExtractRequest(BaseModel):
     text: str
+
 
 class ExtractResponse(BaseModel):
     vendor: str
@@ -35,15 +37,16 @@ def extract(req: ExtractRequest):
             date=""
         )
 
-    # -------- Vendor --------
-    vendor_patterns = [
-    r"(?i)vendor\s*:\s*(.+)",
-    r"(?i)supplier\s*:\s*(.+)",
-    r"(?i)bill\s+from\s*:\s*(.+)",
-    r"(?i)from\s*:\s*(.+)",
-    ]
+    # ---------------- Vendor ----------------
 
     vendor = ""
+
+    vendor_patterns = [
+        r"(?i)vendor\s*:\s*(.+)",
+        r"(?i)supplier\s*:\s*(.+)",
+        r"(?i)bill\s+from\s*:\s*(.+)",
+        r"(?i)from\s*:\s*(.+)",
+    ]
 
     for p in vendor_patterns:
         m = re.search(p, text)
@@ -53,28 +56,14 @@ def extract(req: ExtractRequest):
 
     if not vendor:
         lines = [l.strip() for l in text.splitlines() if l.strip()]
-        vendor = lines[0] if lines else ""
+        if lines:
+            vendor = lines[0]
 
-    # -------- Amount --------
+    # ---------------- Currency ----------------
 
-amount = 0.0
+    currency = ""
 
-amount_patterns = [
-    r"(?i)(?:total(?:\s+due)?|amount(?:\s+due)?|balance(?:\s+due)?|grand\s+total|invoice\s+total|total\s+invoice)\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)",
-
-    r"(?i)(?:USD|EUR|GBP)\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)",
-
-    r"[$€£]\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)",
-]
-
-for p in amount_patterns:
-    m = re.search(p, text)
-    if m:
-        amount = float(m.group(1).replace(",", ""))
-        break
-
-    # -------- Currency --------
-    m = re.search(r"\b(USD|EUR|GBP)\b", text, re.I)
+    m = re.search(r"\b(USD|EUR|GBP)\b", text, re.IGNORECASE)
 
     if m:
         currency = m.group(1).upper()
@@ -84,13 +73,45 @@ for p in amount_patterns:
         currency = "EUR"
     elif "£" in text:
         currency = "GBP"
-    else:
-        currency = ""
 
-    # -------- Date --------
+    # ---------------- Amount ----------------
+
+    amount = 0.0
+
+    # First look for amounts near currency
+    matches = re.findall(
+        r"(?:USD|EUR|GBP|\$|€|£)\s*([0-9][0-9,]*(?:\.[0-9]{2})?)|([0-9][0-9,]*(?:\.[0-9]{2})?)\s*(?:USD|EUR|GBP)",
+        text,
+        re.IGNORECASE,
+    )
+
+    values = []
+
+    for a, b in matches:
+        val = a if a else b
+        try:
+            values.append(float(val.replace(",", "")))
+        except:
+            pass
+
+    # If nothing found near currency, find every number
+    if not values:
+        nums = re.findall(r"\d[\d,]*\.\d{2}|\d[\d,]*", text)
+
+        for n in nums:
+            try:
+                values.append(float(n.replace(",", "")))
+            except:
+                pass
+
+    if values:
+        amount = max(values)
+
+    # ---------------- Date ----------------
+
     date = ""
 
-    m = re.search(r"\b(20\d\d-\d\d-\d\d)\b", text)
+    m = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", text)
 
     if m:
         date = m.group(1)
