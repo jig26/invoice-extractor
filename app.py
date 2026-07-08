@@ -78,31 +78,13 @@ def extract(req: ExtractRequest):
 
     amount = 0.0
 
-    # First look for amounts near currency
-    matches = re.findall(
-        r"(?:USD|EUR|GBP|\$|€|£)\s*([0-9][0-9,]*(?:\.[0-9]{2})?)|([0-9][0-9,]*(?:\.[0-9]{2})?)\s*(?:USD|EUR|GBP)",
-        text,
-        re.IGNORECASE,
-    )
-
     values = []
 
-    for a, b in matches:
-        val = a if a else b
+    for m in re.finditer(r"\d[\d,]*\.\d{2}", text):
         try:
-            values.append(float(val.replace(",", "")))
-        except:
+            values.append(float(m.group().replace(",", "")))
+        except ValueError:
             pass
-
-    # If nothing found near currency, find every number
-    if not values:
-        nums = re.findall(r"\d[\d,]*\.\d{2}|\d[\d,]*", text)
-
-        for n in nums:
-            try:
-                values.append(float(n.replace(",", "")))
-            except:
-                pass
 
     if values:
         amount = max(values)
